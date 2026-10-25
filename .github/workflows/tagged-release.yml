@@ -7,6 +7,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing or new release tag to publish
+        required: true
+        type: string
 
 jobs:
   linux-release-build:
@@ -119,13 +125,24 @@ jobs:
     steps:
     - name: Download build artifacts
       uses: actions/download-artifact@v4
-    - name: "Create Release"
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        prerelease: false
-        files: |
+    - name: Publish release assets
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        tag="${GITHUB_REF_NAME}"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          tag="${{ inputs.release_tag }}"
+        fi
+        files=(
           lan-mouse-linux/lan-mouse
           lan-mouse-macos-intel/lan-mouse-macos-intel
           lan-mouse-macos-aarch64/lan-mouse-macos-aarch64
           MTR-LAN-Copy-windows/MTR-LAN-Copy-windows.zip
+        )
+        if gh release view "$tag" >/dev/null 2>&1; then
+          gh release upload "$tag" "${files[@]}" --clobber
+        else
+          gh release create "$tag" "${files[@]}" \
+            --title "MTR-LAN-Copy $tag" \
+            --notes "Automated release for $tag."
+        fi
