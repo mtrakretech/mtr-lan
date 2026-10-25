@@ -538,7 +538,7 @@ unsafe extern "system" fn mouse_hook(code: i32, message: WPARAM, data: LPARAM) -
             {
                 let report = state
                     .last_entry_suppress
-                    .is_none_or(|then| now.duration_since(then) > MISS_REPORT);
+                    .map_or(true, |then| now.duration_since(then) > MISS_REPORT);
                 if report {
                     state.last_entry_suppress = Some(now);
                     log::info!(
@@ -554,7 +554,7 @@ unsafe extern "system" fn mouse_hook(code: i32, message: WPARAM, data: LPARAM) -
                 .find(|(_, (side, ready))| *side == position && *ready)
                 .map(|(handle, _)| *handle);
             let Some(client) = target else {
-                let report = state.last_edge_miss.is_none_or(|(last_pos, then)| {
+                let report = state.last_edge_miss.map_or(true, |(last_pos, then)| {
                     last_pos != position || now.duration_since(then) > MISS_REPORT
                 });
                 if report && !state.peers.is_empty() {

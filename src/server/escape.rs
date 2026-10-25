@@ -128,7 +128,7 @@ fn peer_candidate(server: &Server) -> Option<Candidate> {
             edge: escape_edge(state.client.pos),
             label: state.client.label(),
         };
-        if best.as_ref().is_none_or(|(_, t)| seen > *t) {
+        if best.as_ref().map_or(true, |(_, t)| seen > *t) {
             best = Some((candidate, seen));
         }
     }
@@ -184,7 +184,7 @@ pub fn new(
                     None => "none yet".to_string(),
                     Some(t) => format!("{}s ago (session idle)", now.duration_since(t).as_secs()),
                 };
-                let report = last_miss.is_none_or(|t| now.duration_since(t) > MISS_REPORT);
+                let report = last_miss.map_or(true, |t| now.duration_since(t) > MISS_REPORT);
                 if report {
                     last_miss = Some(now);
                     log::info!(
