@@ -1,10 +1,10 @@
-MTR-LAN-COPY - YOUR TWO-PC SETUP (desktop v7)
+MTR-LAN-COPY - YOUR TWO-PC SETUP (desktop v8)
 
 This PC: MTR-PC  192.168.1.17 -- HOST (your keyboard and mouse)
 Other PC: DESKTOP-R37SVF8  192.168.1.47 -- CLIENT
 
 SETUP STEPS
-1. Run desktop v7 (MTR-LAN-Copy) on BOTH PCs: extract the ZIP, then open
+1. Run desktop v8 (MTR-LAN-Copy) on BOTH PCs: extract the ZIP, then open
    MTR-LAN-Copy.exe. Both PCs should use this release.
 2. MTR-PC: This PC > Host > Save name and role (confirm the warning).
    DESKTOP-R37SVF8: This PC > Client. The display name saves when typing pauses.
@@ -27,5 +27,5 @@ LIMITS
 - Traffic is unencrypted and unauthenticated; use trusted private LANs only.
 - Host input capture is experimental; elevated/secure windows may reject
   injected input. No clipboard/file transfer.
-- Desktop v7 remains wire-compatible with v3/v4/v5/v6 apps, but both sides
-  should run v7 for identical behavior. Physical two-PC input was not tested.
+- Desktop v8 remains wire-compatible with v3/v4/v5/v6/v7 apps, but both sides
+  should run v8 for identical behavior. Physical two-PC input was not tested.

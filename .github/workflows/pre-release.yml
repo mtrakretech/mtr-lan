@@ -1,5 +1,8 @@
 name: "pre-release"
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ "main" ]
@@ -28,7 +31,7 @@ jobs:
         path: target/release/lan-mouse
 
   windows-release-build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
     - uses: actions/setup-python@v5
       with:
@@ -67,15 +70,19 @@ jobs:
       run: cargo build --release
     - name: Create Archive
       run: |
-        mkdir "lan-mouse-windows"
-        Get-Childitem -Path "C:\\gtk-build\\gtk\\x64\\release\\bin\\*.dll" -File -Recurse | Copy-Item -Destination "lan-mouse-windows"
-        Copy-Item -Path "target\release\lan-mouse.exe" -Destination "lan-mouse-windows"
-        Compress-Archive -Path "lan-mouse-windows\*" -DestinationPath lan-mouse-windows.zip
+        mkdir "MTR-LAN-Copy-windows"
+        Get-Childitem -Path "C:\\gtk-build\\gtk\\x64\\release\\bin\\*.dll" -File -Recurse | Copy-Item -Destination "MTR-LAN-Copy-windows"
+        Copy-Item -Path "target\release\lan-mouse.exe" -Destination "MTR-LAN-Copy-windows\MTR-LAN-Copy.exe"
+        Copy-Item packaging\portable-config.toml "MTR-LAN-Copy-windows\config.toml"
+        Copy-Item packaging\desktop-settings.toml, packaging\PORTABLE-README.txt, packaging\TWO-PC-SETUP.txt "MTR-LAN-Copy-windows"
+        Set-Content "MTR-LAN-Copy-windows\portable.flag" 'Portable mode: load config.toml beside MTR-LAN-Copy.exe.'
+        Copy-Item LICENSE, README.md "MTR-LAN-Copy-windows"
+        Compress-Archive -Path "MTR-LAN-Copy-windows\*" -DestinationPath MTR-LAN-Copy-windows.zip
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: lan-mouse-windows
-        path: lan-mouse-windows.zip
+        name: MTR-LAN-Copy-windows
+        path: MTR-LAN-Copy-windows.zip
 
   macos-release-build:
     runs-on: macos-latest
@@ -111,7 +118,7 @@ jobs:
 
   pre-release:
     name: "Pre Release"
-    needs: [windows-release-build, linux-release-build, macos-release-build]
+    needs: [windows-release-build, linux-release-build, macos-release-build, macos-aarch64-release-build]
     runs-on: "ubuntu-latest"
     steps:
     - name: Download build artifacts
@@ -127,4 +134,4 @@ jobs:
           lan-mouse-linux/lan-mouse
           lan-mouse-macos-intel/lan-mouse-macos-intel
           lan-mouse-macos-aarch64/lan-mouse-macos-aarch64
-          lan-mouse-windows/lan-mouse-windows.zip
+          MTR-LAN-Copy-windows/MTR-LAN-Copy-windows.zip

@@ -4,7 +4,7 @@ Extract the whole ZIP and open MTR-LAN-Copy.exe directly. No CMD, installer or
 administrator privileges required. Keep the bundled DLLs and data folders.
 
 TWO-PC SETUP
-1. Run desktop v7 on BOTH Windows PCs. Default role is Client (capture disabled).
+1. Run desktop v8 on BOTH Windows PCs. Default role is Client (capture disabled).
 2. On the PC providing keyboard/mouse: This PC > Host > Save name and role,
    then confirm the trusted-LAN warning. On the other PC choose Client.
 3. Discover lists compatible running apps. Add the intended PC, or manually
@@ -47,7 +47,7 @@ NAMES, DISCOVERY AND ROUTERS
 - Manual PC-name resolution uses Windows native name services, then DNS.
   A friendly app nickname is not necessarily a resolvable DNS hostname.
 - Compatible desktop apps keep announcing via UDP 4243 / multicast
-  239.255.42.42, TTL 1 (v7 is wire-compatible with desktop v3/v4/v5/v6). Only
+  239.255.42.42, TTL 1 (v8 is wire-compatible with desktop v3/v4/v5/v6/v7). Only
   compatible running apps are discoverable, not every Windows PC.
 - Switches normally pass same-LAN discovery. Routers/VLANs/guest Wi-Fi/client
   isolation may block it. Use manual hostname/IP and working UDP routing.
@@ -86,6 +86,6 @@ or use public/untrusted networks. Enabling a host can expose keystrokes on LAN.
 
 Source: https://github.com/mtrakretech/mtr-lan (fork name: MTR-LAN-Copy)
 SOURCE-COMMIT.txt identifies the source revision used for this build. Local
-changes and build/test scripts are included in the accompanying source-v7 ZIP.
+changes and build/test scripts are included in the accompanying source-v8 ZIP.
 GPL: LICENSE.txt.
 Native dependency licenses: share/licenses. Build tools live separately in .tools.

@@ -19,7 +19,7 @@ Extract the **entire ZIP** and run `MTR-LAN-Copy.exe`. No installer or
 administrator privileges are required. Keep the accompanying DLLs and data
 folders next to the executable.
 
-The current release is [desktop v7](https://github.com/mtrakretech/mtr-lan/releases/tag/v7).
+The current release is [desktop v8](https://github.com/mtrakretech/mtr-lan/releases/tag/v8).
 See [`packaging/PORTABLE-README.txt`](packaging/PORTABLE-README.txt) and
 [`packaging/TWO-PC-SETUP.txt`](packaging/TWO-PC-SETUP.txt) for setup instructions.
 
@@ -43,7 +43,7 @@ rename the Windows computer itself.
 
 ## Quick setup (two Windows PCs)
 
-1. Download and extract the same v7 portable ZIP on both PCs; launch
+1. Download and extract the same v8 portable ZIP on both PCs; launch
    `MTR-LAN-Copy.exe` on each.
 2. On the PC whose physical keyboard and mouse will be shared, open **This PC**,
    select **Host**, choose a display name, and save. Read and confirm the Host
@@ -88,8 +88,8 @@ documentation tests. The second creates portable and source archives under
 `dist/`. Python integration checks can be run with:
 
 ```powershell
-python ./scripts/test-network.py ./dist/MTR-LAN-Copy-0.7.3-windows-x64-portable-v7
-python ./scripts/test-desktop.py ./dist/MTR-LAN-Copy-0.7.3-windows-x64-portable-v7
+python ./scripts/test-network.py ./dist/MTR-LAN-Copy-0.7.3-windows-x64-portable-v8
+python ./scripts/test-desktop.py ./dist/MTR-LAN-Copy-0.7.3-windows-x64-portable-v8
 ./scripts/test-portable.ps1
 ```
 

@@ -1,7 +1,7 @@
 param([switch]$KeepRunning, [string]$PackagePath)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-if (!$PackagePath) { $PackagePath = Join-Path $root 'dist\MTR-LAN-Copy-0.7.3-windows-x64-portable-v7' }
+if (!$PackagePath) { $PackagePath = Join-Path $root 'dist\MTR-LAN-Copy-0.7.3-windows-x64-portable-v8' }
 $PackagePath = (Resolve-Path $PackagePath).Path
 if (Get-Process MTR-LAN-Copy -ErrorAction SilentlyContinue) { throw 'Close existing MTR-LAN-Copy instances before this smoke test.' }
 $oldPath = $env:PATH

@@ -5,7 +5,7 @@
 }:
 rustPlatform.buildRustPackage {
   pname = "lan-mouse";
-  version = "0.7.0";
+  version = "0.7.3";
 
   nativeBuildInputs = with pkgs; [
     pkg-config

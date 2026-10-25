@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $prefix = Join-Path $root '.tools\msys64\ucrt64'
 $dist = Join-Path $root 'dist'
-$package = Join-Path $dist 'MTR-LAN-Copy-0.7.3-windows-x64-portable-v7'
+$package = Join-Path $dist 'MTR-LAN-Copy-0.7.3-windows-x64-portable-v8'
 if (Test-Path $package) { throw "Package directory already exists: $package" }
 New-Item -ItemType Directory -Force $package | Out-Null
 Copy-Item "$root\target\release\lan-mouse.exe" "$package\MTR-LAN-Copy.exe"
@@ -55,7 +55,7 @@ Copy-Item "$root\packaging\TWO-PC-SETUP.txt" "$package\TWO-PC-SETUP.txt"
 & "$root\.tools\msys64\usr\bin\bash.exe" -lc 'pacman -Q' | Set-Content "$package\BUILD-DEPENDENCIES.txt"
 git -C $root rev-parse HEAD | Set-Content "$package\SOURCE-COMMIT.txt"
 Compress-Archive -Path $package -DestinationPath "$package.zip" -CompressionLevel Optimal
-$sourceStage = Join-Path $dist 'MTR-LAN-Copy-0.7.3-source-v7'
+$sourceStage = Join-Path $dist 'MTR-LAN-Copy-0.7.3-source-v8'
 if (Test-Path $sourceStage) { throw "Source stage already exists: $sourceStage" }
 New-Item -ItemType Directory -Force $sourceStage | Out-Null
 $sourceFiles = @(& git -C $root ls-files --cached --others --exclude-standard)
@@ -73,6 +73,6 @@ $checksumLines = foreach ($archive in @("$package.zip", "$sourceStage.zip")) {
         "$hash  $([IO.Path]::GetFileName($archive))"
     } finally { $stream.Dispose(); $sha.Dispose() }
 }
-$checksumLines | Set-Content "$dist\SHA256SUMS-v7.txt"
+$checksumLines | Set-Content "$dist\SHA256SUMS-v8.txt"
 Write-Output "Portable executable: $package\MTR-LAN-Copy.exe"
 Write-Output "Portable archive: $package.zip"

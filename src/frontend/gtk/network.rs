@@ -49,6 +49,61 @@ fn page(title: &str, description: &str) -> (gtk::ScrolledWindow, gtk::Box) {
     (scroll, body)
 }
 
+fn schedule_name_save(
+    source: &Rc<RefCell<Option<glib::SourceId>>>,
+    delay: Duration,
+    callback: impl FnOnce() + 'static,
+) {
+    if let Some(existing) = source.borrow_mut().take() {
+        existing.remove();
+    }
+
+    let source_for_callback = Rc::clone(source);
+    let mut callback = Some(callback);
+    let id = glib::timeout_add_local(delay, move || {
+        // `SourceId::remove` panics for an already-fired one-shot source. Clear
+        // the slot before returning Break so the next keystroke/save cannot
+        // attempt to remove this expired timer.
+        source_for_callback.borrow_mut().take();
+        if let Some(callback) = callback.take() {
+            callback();
+        }
+        glib::ControlFlow::Break
+    });
+    *source.borrow_mut() = Some(id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fired_name_save_timer_can_be_replaced_repeatedly() {
+        // timeout_add_local attaches to GLib's default context, not an
+        // arbitrary thread-default context.
+        let context = glib::MainContext::default();
+        let source = Rc::new(RefCell::new(None));
+        let fired = Rc::new(Cell::new(0));
+
+        for expected in 1..=3 {
+            let source_for_callback = Rc::clone(&source);
+            let fired_for_callback = Rc::clone(&fired);
+            schedule_name_save(&source, Duration::from_millis(1), move || {
+                assert!(source_for_callback.borrow().is_none());
+                fired_for_callback.set(expected);
+            });
+
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while fired.get() != expected && std::time::Instant::now() < deadline {
+                context.iteration(false);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(fired.get(), expected);
+            assert!(source.borrow().is_none());
+        }
+    }
+}
+
 pub fn setup(window: &Window) {
     window
         .imp()
@@ -146,14 +201,9 @@ pub fn setup(window: &Window) {
             return;
         }
         dirty.set(true);
-        if let Some(existing) = name_save.borrow_mut().take() {
-            existing.remove();
-        }
         let role_for_save = last_role.clone();
         let pending_for_save = pending_name.clone();
-        *name_save.borrow_mut() = Some(glib::timeout_add_local(
-            std::time::Duration::from_millis(700),
-            clone!(@weak name, @weak window => @default-return glib::ControlFlow::Break, move || {
+        schedule_name_save(&name_save, Duration::from_millis(700), clone!(@weak name, @weak window => @default-return (), move || {
                 let trimmed = name.text().trim().to_string();
                 let stored = window
                     .imp()
@@ -176,9 +226,7 @@ pub fn setup(window: &Window) {
                     *pending_for_save.borrow_mut() = Some(trimmed.clone());
                     window.request(FrontendEvent::SetIdentity(trimmed, role_for_save.get()));
                 }
-                glib::ControlFlow::Break
-            }),
-        ));
+            }));
     }));
     let health = label("Waiting for role status…", "info-card");
     pc.append(&health);
