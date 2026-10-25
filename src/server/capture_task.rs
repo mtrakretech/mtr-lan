@@ -16,6 +16,9 @@ use super::Server;
 
 #[derive(Clone, Copy, Debug)]
 pub enum CaptureEvent {
+    ReleasePeer(ClientHandle, Option<SocketAddr>),
+    SetEnabled(bool),
+    SetReady(ClientHandle, bool),
     /// capture must release the mouse
     Release,
     /// capture is notified of a change in client states
@@ -33,6 +36,7 @@ pub fn new(
 ) -> (JoinHandle<Result<()>>, Sender<CaptureEvent>) {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let task = tokio::task::spawn_local(async move {
+        capture.set_enabled(server.role.get() == crate::config::Role::Host)?;
         let mut pressed_keys = HashSet::new();
         loop {
             tokio::select! {
@@ -47,8 +51,20 @@ pub fn new(
                     log::debug!("input capture notify rx: {e:?}");
                     match e {
                         Some(e) => match e {
+                            CaptureEvent::ReleasePeer(client, address) => {
+                                if let Some(address) = address { let _ = sender_tx.send((Event::Disconnect(), address)).await; }
+                                if server.active_client.get() == Some(client) { capture.release()?; pressed_keys.clear(); server.active_client.set(None); server.state.set(State::Receiving); }
+                            },
+                            CaptureEvent::SetEnabled(enabled) => {
+                                let addresses: Vec<_> = server.client_manager.borrow().get_client_states().filter(|s| s.active).filter_map(|s| s.active_addr).collect();
+                                for address in addresses { let _ = sender_tx.send((Event::Disconnect(), address)).await; }
+                                disconnect_active(&server, &sender_tx).await; capture.release()?; capture.set_enabled(enabled)?; pressed_keys.clear(); server.state.set(State::Receiving);
+                            },
+                            CaptureEvent::SetReady(client, ready) => capture.set_ready(client, ready)?,
                             CaptureEvent::Release => {
+                                disconnect_active(&server, &sender_tx).await;
                                 capture.release()?;
+                                pressed_keys.clear();
                                 server.state.replace(State::Receiving);
 
                             }
@@ -65,9 +81,33 @@ pub fn new(
     (task, tx)
 }
 
+async fn disconnect_active(server: &Server, sender: &Sender<(Event, SocketAddr)>) {
+    let address = server.active_client.get().and_then(|c| {
+        server
+            .client_manager
+            .borrow()
+            .get(c)
+            .and_then(|s| s.active_addr)
+    });
+    if let Some(address) = address {
+        let _ = sender.send((Event::Disconnect(), address)).await;
+    } else if server.role.get() == crate::config::Role::Client {
+        let addresses: Vec<_> = server
+            .client_manager
+            .borrow()
+            .get_client_states()
+            .filter(|s| s.active)
+            .filter_map(|s| s.active_addr)
+            .collect();
+        for address in addresses {
+            let _ = sender.send((Event::Disconnect(), address)).await;
+        }
+    }
+    server.active_client.set(None);
+}
+
 fn update_pressed_keys(pressed_keys: &mut HashSet<scancode::Linux>, key: u32, state: u8) {
     if let Ok(scancode) = scancode::Linux::try_from(key) {
-        log::debug!("key: {key}, state: {state}, scancode: {scancode:?}");
         match state {
             1 => pressed_keys.insert(scancode),
             _ => pressed_keys.remove(&scancode),
@@ -85,11 +125,18 @@ async fn handle_capture_event(
     release_bind: &[scancode::Linux],
 ) -> Result<()> {
     let (c, mut e) = event;
-    log::trace!("({c}) {e:?}");
+    if server.role.get() != crate::config::Role::Host {
+        capture.release()?;
+        return Ok(());
+    }
+    if e == Event::Disconnect() {
+        server.state.set(State::Receiving);
+        capture.release()?;
+        pressed_keys.clear();
+    }
 
     if let Event::Keyboard(KeyboardEvent::Key { key, state, .. }) = e {
         update_pressed_keys(pressed_keys, key, state);
-        log::debug!("{pressed_keys:?}");
         if release_bind.iter().all(|k| pressed_keys.contains(k)) {
             pressed_keys.clear();
             log::info!("releasing pointer");
@@ -127,6 +174,12 @@ async fn handle_capture_event(
                 .active_client
                 .replace(Some(client_state.client.handle));
             log::trace!("Active client => {}", client_state.client.handle);
+            log::info!(
+                "sharing started: pointer crossed the {} edge toward peer '{}' (handle {})",
+                client_state.client.pos,
+                client_state.client.label(),
+                client_state.client.handle
+            );
             start_timer = true;
             log::trace!("STATE ===> AwaitingLeave");
             enter = true;

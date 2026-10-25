@@ -83,6 +83,8 @@ pub fn run() -> Result<()> {
                     Err(e) => break log::error!("{e}"),
                 };
                 match notify {
+                    FrontendNotify::Status(status) => log::info!("{status:?}"),
+                    FrontendNotify::ShowWindow() => {}
                     FrontendNotify::NotifyClientActivate(handle, active) => {
                         if active {
                             log::info!("client {handle} activated");

@@ -82,7 +82,9 @@ impl InputEmulation for WindowsEmulation {
         // nothing to do
     }
 
-    async fn destroy(&mut self) {}
+    async fn destroy(&mut self) {
+        self.kill_repeat_task();
+    }
 }
 
 impl WindowsEmulation {
@@ -107,12 +109,14 @@ impl WindowsEmulation {
 }
 
 fn send_input_safe(input: INPUT) {
+    static DENIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     unsafe {
-        loop {
-            /* retval = number of successfully submitted events */
-            if SendInput(&[input], std::mem::size_of::<INPUT>() as i32) > 0 {
-                break;
+        if SendInput(&[input], std::mem::size_of::<INPUT>() as i32) == 0 {
+            if !DENIED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                log::warn!("Windows rejected input injection (UIPI/elevated window or secure desktop); no retry loop");
             }
+        } else {
+            DENIED.store(false, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }
@@ -218,7 +222,6 @@ fn linux_keycode_to_windows_scancode(linux_keycode: u32) -> Option<u16> {
             return None;
         }
     };
-    log::trace!("linux code: {linux_scancode:?}");
     let windows_scancode = match scancode::Windows::try_from(linux_scancode) {
         Ok(s) => s,
         Err(_) => {
@@ -226,6 +229,5 @@ fn linux_keycode_to_windows_scancode(linux_keycode: u32) -> Option<u16> {
             return None;
         }
     };
-    log::trace!("windows code: {windows_scancode:?}");
     Some(windows_scancode as u16)
 }

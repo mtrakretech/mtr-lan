@@ -24,6 +24,9 @@ impl Default for DummyInputCapture {
 }
 
 impl InputCapture for DummyInputCapture {
+    fn is_available(&self) -> bool {
+        false
+    }
     fn notify(&mut self, _event: ClientEvent) -> io::Result<()> {
         Ok(())
     }

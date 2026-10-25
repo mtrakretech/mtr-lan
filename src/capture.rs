@@ -70,6 +70,15 @@ pub async fn create() -> Box<dyn InputCapture> {
 }
 
 pub trait InputCapture: Stream<Item = io::Result<(ClientHandle, Event)>> + Unpin {
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn set_enabled(&mut self, _enabled: bool) -> io::Result<()> {
+        Ok(())
+    }
+    fn set_ready(&mut self, _client: ClientHandle, _ready: bool) -> io::Result<()> {
+        Ok(())
+    }
     /// notify input capture of configuration changes
     fn notify(&mut self, event: ClientEvent) -> io::Result<()>;
 

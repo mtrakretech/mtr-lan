@@ -5,3 +5,7 @@
 .vscode/
 .direnv/
 result
+/.tools/
+/dist/
+__pycache__/
+*.pyc

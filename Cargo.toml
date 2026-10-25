@@ -4,7 +4,7 @@ description = "Software KVM Switch / mouse & keyboard sharing software for Local
 version = "0.7.3"
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/ferdinandschober/lan-mouse"
+repository = "https://github.com/mtrakretech/mtr-lan"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,10 +28,11 @@ futures-core = "0.3.28"
 futures = "0.3.28"
 clap = { version="4.4.11", features = ["derive"] }
 gtk = { package = "gtk4", version = "0.8.1", features = ["v4_2"], optional = true }
-adw = { package = "libadwaita", version = "0.6.0", features = ["v1_1"], optional = true }
+adw = { package = "libadwaita", version = "0.6.0", features = ["v1_2"], optional = true }
 async-channel = { version = "2.1.1", optional = true }
 keycode = "0.4.0"
 once_cell = "1.19.0"
+socket2 = { version = "0.5", features = ["all"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.148"
@@ -50,6 +51,10 @@ core-graphics = { version = "0.23", features = ["highsierra"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = {  version = "0.54.0", features = [ "Win32_UI_Input_KeyboardAndMouse" ] }
+tray-icon = { version = "0.19", default-features = false }
+winreg = "0.50"
+ipconfig = "0.3"
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Security", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [build-dependencies]
 glib-build-tools = "0.19.0"

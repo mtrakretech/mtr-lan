@@ -1,0 +1,10 @@
+# Portable settings; GUI changes are also saved here automatically.
+port = 4242
+frontend = "gtk"
+role = "client"
+# device_name defaults to the Windows PC name. Change it in This PC.
+
+# Example peer; uncomment and replace the address with your trusted peer.
+# [right]
+# ips = ["192.168.1.20"]
+# activate_on_startup = true

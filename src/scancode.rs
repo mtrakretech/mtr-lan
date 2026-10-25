@@ -1,5 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn undefined_discriminants_are_never_transmuted() {
+        for value in [84, 195, 196, 197, 198, 199, 249, u32::MAX] {
+            assert!(super::Linux::try_from(value).is_err());
+        }
+        assert!(super::Linux::try_from(30).is_ok());
+    }
+}
+
 /*
  * https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input
  */
@@ -432,7 +443,7 @@ impl TryFrom<u32> for Linux {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value >= Self::KeyCount as u32 {
+        if value >= Self::KeyCount as u32 || matches!(value, 84 | 195..=199) {
             return Err(());
         }
         let code: Linux = unsafe { std::mem::transmute(value) };

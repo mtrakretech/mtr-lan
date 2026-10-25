@@ -4,7 +4,6 @@
     <file compressed="true" preprocess="xml-stripblanks">window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">client_row.ui</file>
     <file compressed="true">style.css</file>
-    <file compressed="true">style-dark.css</file>
   </gresource>
   <gresource prefix="/de/feschber/LanMouse/icons">
 	<file compressed="true" preprocess="xml-stripblanks">de.feschber.LanMouse.svg</file>

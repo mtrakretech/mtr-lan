@@ -38,7 +38,10 @@ pub fn run_frontend(config: &Config) -> Result<()> {
     match config.frontend {
         #[cfg(feature = "gtk")]
         Frontend::Gtk => {
-            gtk::run();
+            anyhow::ensure!(
+                gtk::run(),
+                "GTK frontend exited with failure; see logs/app.log"
+            );
         }
         #[cfg(not(feature = "gtk"))]
         Frontend::Gtk => panic!("gtk frontend requested but feature not enabled!"),
@@ -74,10 +77,14 @@ pub fn wait_for_service() -> Result<std::os::unix::net::UnixStream> {
 #[cfg(windows)]
 pub fn wait_for_service() -> Result<std::net::TcpStream> {
     let mut duration = Duration::from_millis(1);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         use std::net::TcpStream;
         if let Ok(stream) = TcpStream::connect("127.0.0.1:5252") {
             break Ok(stream);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(anyhow!("Background service did not start within 10 seconds. Check logs/service.log and whether UDP port 4242 is already in use."));
         }
         std::thread::sleep(*exponential_back_off(&mut duration));
     }
@@ -85,6 +92,11 @@ pub fn wait_for_service() -> Result<std::net::TcpStream> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum FrontendEvent {
+    SetIdentity(String, crate::config::Role),
+    RenamePeer(ClientHandle, String),
+    ReleaseInput(),
+    Status(),
+    ShowWindow(),
     /// add a new client
     AddClient(Option<String>, u16, Position),
     /// activate/deactivate client
@@ -103,6 +115,8 @@ pub enum FrontendEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FrontendNotify {
+    Status(ServiceStatus),
+    ShowWindow(),
     NotifyClientActivate(ClientHandle, bool),
     NotifyClientCreate(Client),
     NotifyClientUpdate(Client),
@@ -112,6 +126,47 @@ pub enum FrontendNotify {
     /// Client State, active
     Enumerate(Vec<(Client, bool)>),
     NotifyError(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceStatus {
+    pub computer_name: String,
+    pub device_name: String,
+    pub role: crate::config::Role,
+    pub capture_available: bool,
+    pub sharing: bool,
+    pub local_addresses: Vec<String>,
+    pub peers: Vec<PeerStatus>,
+    pub discovered: Vec<DiscoveredDevice>,
+    pub discovery_status: String,
+    pub port: u16,
+    pub configured: usize,
+    pub enabled: usize,
+    pub packets_received: u64,
+    pub packets_sent: u64,
+    pub last_received_secs: Option<u64>,
+    pub uptime_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerStatus {
+    pub handle: ClientHandle,
+    pub display_name: Option<String>,
+    pub hostname: Option<String>,
+    pub enabled: bool,
+    pub responding: bool,
+    pub latency_ms: Option<u64>,
+    pub addresses: Vec<String>,
+    pub last_seen_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveredDevice {
+    pub name: String,
+    pub computer_name: String,
+    pub address: String,
+    pub port: u16,
+    pub role: crate::config::Role,
 }
 
 pub struct FrontendListener {
@@ -228,11 +283,11 @@ impl FrontendListener {
         // TODO do simultaneously
         for tx in self.tx_streams.iter_mut() {
             // write len + payload
-            if tx.write(&len).await.is_err() {
+            if tx.write_all(&len).await.is_err() {
                 keep.push(false);
                 continue;
             }
-            if tx.write(payload).await.is_err() {
+            if tx.write_all(payload).await.is_err() {
                 keep.push(false);
                 continue;
             }
@@ -257,16 +312,17 @@ impl Drop for FrontendListener {
 #[cfg(unix)]
 pub async fn read_event(stream: &mut ReadHalf<UnixStream>) -> Result<FrontendEvent> {
     let len = stream.read_u64().await?;
-    assert!(len <= 256);
-    let mut buf = [0u8; 256];
-    stream.read_exact(&mut buf[..len as usize]).await?;
-    Ok(serde_json::from_slice(&buf[..len as usize])?)
+    anyhow::ensure!(len <= 65536, "Frontend frame exceeds 64 KiB");
+    let mut buf = vec![0; len as usize];
+    stream.read_exact(&mut buf).await?;
+    Ok(serde_json::from_slice(&buf)?)
 }
 
 #[cfg(windows)]
 pub async fn read_event(stream: &mut ReadHalf<TcpStream>) -> Result<FrontendEvent> {
     let len = stream.read_u64().await?;
-    let mut buf = [0u8; 256];
-    stream.read_exact(&mut buf[..len as usize]).await?;
-    Ok(serde_json::from_slice(&buf[..len as usize])?)
+    anyhow::ensure!(len <= 65536, "Frontend frame exceeds 64 KiB");
+    let mut buf = vec![0; len as usize];
+    stream.read_exact(&mut buf).await?;
+    Ok(serde_json::from_slice(&buf)?)
 }

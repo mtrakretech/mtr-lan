@@ -1,74 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-	<template class="ClientRow" parent="AdwExpanderRow">
-		<property name="title">hostname</property>
-		<!-- enabled -->
-		<child type="prefix">
-			<object class="GtkSwitch" id="enable_switch">
-				<signal name="state_set" handler="handle_client_set_state" swapped="true"/>
-				<property name="valign">center</property>
-				<property name="halign">end</property>
-				<property name="tooltip-text" translatable="yes">enable</property>
-			</object>
-		</child>
-		<!-- host -->
-		<child>
-			<object class="AdwActionRow">
-				<property name="title">hostname</property>
-				<property name="subtitle">port</property>
-				<!-- hostname -->
-				<child>
-					<object class="GtkEntry" id="hostname">
-						<!-- <property name="title" translatable="yes">hostname</property> -->
-						<property name="xalign">0.5</property>
-						<property name="valign">center</property>
-						<property name="placeholder-text">hostname</property>
-						<property name="width-chars">-1</property>
-					</object>
-				</child>
-				<!-- port -->
-				<child>
-					<object class="GtkEntry" id="port">
-						<!-- <property name="title" translatable="yes">port</property> -->
-						<property name="input_purpose">GTK_INPUT_PURPOSE_NUMBER</property>
-						<property name="xalign">0.5</property>
-						<property name="valign">center</property>
-						<property name="placeholder-text">4242</property>
-						<property name="width-chars">5</property>
-					</object>
-				</child>
-			</object>
-		</child>
-		<!-- position -->
-		<child>
-			<object class="AdwComboRow" id="position">
-				<property name="title" translatable="yes">position</property>
-				<property name="model">
-					<object class="GtkStringList">
-						<items>
-							<item>Left</item>
-							<item>Right</item>
-							<item>Top</item>
-							<item>Bottom</item>
-						</items>
-					</object>
-				</property>
-			</object>
-		</child>
-		<!-- delete button -->
-		<child>
-			<object class="AdwActionRow" id="delete_row">
-				<property name="title">delete this client</property>
-				<child>
-					<object class="GtkButton" id="delete_button">
-						<signal name="activate" handler="handle_client_delete" object="delete_row" swapped="true"/>
-						<property name="icon-name">user-trash-symbolic</property>
-						<property name="valign">center</property>
-						<property name="halign">center</property>
-						<property name="name">delete-button</property>
-					</object>
-				</child>
-			</object>
-		</child>
-	</template>
+  <template class="ClientRow" parent="AdwExpanderRow">
+    <property name="title">New computer</property>
+    <property name="use-markup">false</property>
+    <child type="prefix"><object class="GtkSwitch" id="enable_switch"><property name="valign">center</property><property name="tooltip-text">Allow input from this computer</property><signal name="state_set" handler="handle_client_set_state" swapped="true"/></object></child>
+    <child><object class="AdwActionRow"><property name="title">Display name</property><property name="subtitle">Optional friendly name for this computer</property><child type="suffix"><object class="GtkEntry" id="display_name"><property name="valign">center</property><property name="placeholder-text">Use PC name</property><property name="max-length">80</property><property name="width-chars">20</property></object></child></object></child>
+    <child><object class="AdwActionRow"><property name="title">Hostname or IP address</property><property name="subtitle">For example, 192.168.1.20</property>
+      <child type="suffix"><object class="GtkEntry" id="hostname"><property name="valign">center</property><property name="placeholder-text">Computer address</property><property name="width-chars">20</property><property name="hexpand">true</property></object></child>
+    </object></child>
+    <child><object class="AdwActionRow"><property name="title">Remote port</property><property name="subtitle">The listen port on the other computer</property>
+      <child type="suffix"><object class="GtkEntry" id="port"><property name="input-purpose">digits</property><property name="xalign">0.5</property><property name="valign">center</property><property name="placeholder-text">4242</property><property name="width-chars">7</property><property name="max-width-chars">7</property></object></child>
+    </object></child>
+    <child><object class="AdwComboRow" id="position"><property name="title">Screen position</property><property name="subtitle">Relative to this computer</property><property name="model"><object class="GtkStringList"><items><item>Left</item><item>Right</item><item>Top</item><item>Bottom</item></items></object></property></object></child>
+    <child><object class="AdwActionRow" id="delete_row"><property name="title">Connection settings</property>
+      <child type="suffix"><object class="GtkButton"><property name="label">Save changes</property><property name="valign">center</property><signal name="clicked" handler="handle_client_apply" swapped="true"/><style><class name="suggested-action"/></style></object></child>
+      <child type="suffix"><object class="GtkButton" id="delete_button"><property name="icon-name">user-trash-symbolic</property><property name="tooltip-text">Remove this computer</property><property name="valign">center</property><property name="name">delete-button</property><style><class name="flat"/></style></object></child>
+    </object></child>
+  </template>
 </interface>

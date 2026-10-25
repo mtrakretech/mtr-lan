@@ -10,7 +10,6 @@ use crate::{
     client::{ClientEvent, ClientHandle},
     emulate::InputEmulation,
     event::{Event, KeyboardEvent},
-    scancode,
     server::State,
 };
 
@@ -18,6 +17,7 @@ use super::{CaptureEvent, Server};
 
 #[derive(Clone, Debug)]
 pub enum EmulationEvent {
+    ReleaseSnapshot(ClientHandle, Vec<u32>),
     /// input emulation is notified of a change in client states
     ClientEvent(ClientEvent),
     /// input emulation must release keys for client
@@ -41,12 +41,13 @@ pub fn new(
         loop {
             tokio::select! {
                 udp_event = udp_rx.recv() => {
-                    let udp_event = udp_event.ok_or(anyhow!("receiver closed"))??;
+                    let udp_event = match udp_rx_value(udp_event)? { Some(event) => event, None => continue };
                     handle_udp_rx(&server, &capture_tx, &mut emulate, &sender_tx, &mut last_ignored, udp_event, &timer_tx).await;
                 }
                 emulate_event = rx.recv() => {
                     match emulate_event {
                         Some(e) => match e {
+                            EmulationEvent::ReleaseSnapshot(client, keys) => { for key in keys { emulate.consume(Event::Keyboard(KeyboardEvent::Key { time: 0, key, state: 0 }), client).await; } },
                             EmulationEvent::ClientEvent(e) => emulate.notify(e).await,
                             EmulationEvent::ReleaseKeys(c) => release_keys(&server, &mut emulate, c).await,
                             EmulationEvent::Terminate => break,
@@ -104,7 +105,6 @@ async fn handle_udp_rx(
     // next event can be logged as ignored again
     last_ignored.take();
 
-    log::trace!("{:20} <-<-<-<------ {addr} ({handle})", event.to_string());
     {
         let mut client_manager = server.client_manager.borrow_mut();
         let client_state = match client_manager.get_mut(handle) {
@@ -117,8 +117,30 @@ async fn handle_udp_rx(
 
         // reset ttl for client and
         client_state.alive = true;
+        client_state.last_seen = Some(std::time::Instant::now());
+        if matches!(event, Event::Pong()) {
+            client_state.latency_ms = client_state
+                .last_ping
+                .map(|t| t.elapsed().as_millis() as u64);
+        }
         // set addr as new default for this client
         client_state.active_addr = Some(addr);
+    }
+
+    // Real pointer/key activity (not control packets) arms the escape gesture.
+    if !matches!(event, Event::Ping() | Event::Pong()) {
+        server
+            .last_remote_input
+            .set(Some(std::time::Instant::now()));
+    }
+
+    if server.role.get() == crate::config::Role::Host
+        && !matches!(
+            event,
+            Event::Ping() | Event::Pong() | Event::Disconnect() | Event::Leave()
+        )
+    {
+        return; // A host never accepts a second host's keyboard/mouse injection.
     }
 
     match (event, addr) {
@@ -127,7 +149,20 @@ async fn handle_udp_rx(
             let _ = sender_tx.send((Event::Pong(), addr)).await;
         }
         (Event::Disconnect(), _) => {
+            let label = server
+                .client_manager
+                .borrow()
+                .get(handle)
+                .map(|s| s.client.label())
+                .unwrap_or_else(|| format!("handle {handle}"));
+            log::info!(
+                "sharing on this PC ended: disconnect received from {label} (return gesture or deliberate release)"
+            );
             release_keys(server, emulate, handle).await;
+            if server.active_client.get() == Some(handle) {
+                let _ = capture_tx.send(CaptureEvent::Release).await;
+                server.state.set(State::Receiving);
+            }
         }
         (event, addr) => {
             // tell clients that we are ready to receive events
@@ -177,7 +212,6 @@ async fn handle_udp_rx(
                     if !ignore_event {
                         // consume event
                         emulate.consume(event, handle).await;
-                        log::trace!("{event:?} => emulate");
                     }
                 }
                 State::AwaitingLeave => {
@@ -203,6 +237,14 @@ async fn handle_udp_rx(
     }
 }
 
+fn udp_rx_value(value: Option<Result<(Event, SocketAddr)>>) -> Result<Option<(Event, SocketAddr)>> {
+    match value {
+        Some(Ok(event)) => Ok(Some(event)),
+        Some(Err(_)) => Ok(None), // Malformed LAN traffic must never terminate input service.
+        None => Err(anyhow!("receiver closed")),
+    }
+}
+
 async fn release_keys(
     server: &Server,
     emulate: &mut Box<dyn InputEmulation>,
@@ -223,9 +265,7 @@ async fn release_keys(
             state: 0,
         });
         emulate.consume(event, client).await;
-        if let Ok(key) = scancode::Linux::try_from(key) {
-            log::warn!("releasing stuck key: {key:?}");
-        }
+        log::debug!("Released a held remote key");
     }
 
     let modifiers_event = KeyboardEvent::Modifiers {

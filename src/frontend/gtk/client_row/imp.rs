@@ -8,9 +8,13 @@ use gtk::glib::subclass::Signal;
 use gtk::{glib, Button, CompositeTemplate, Switch};
 use std::sync::OnceLock;
 
+use super::RowSnapshot;
+
 #[derive(CompositeTemplate, Default)]
 #[template(resource = "/de/feschber/LanMouse/client_row.ui")]
 pub struct ClientRow {
+    #[template_child]
+    pub display_name: TemplateChild<gtk::Entry>,
     #[template_child]
     pub enable_switch: TemplateChild<gtk::Switch>,
     #[template_child]
@@ -24,6 +28,12 @@ pub struct ClientRow {
     #[template_child]
     pub delete_button: TemplateChild<gtk::Button>,
     pub bindings: RefCell<Vec<Binding>>,
+    /// the peer backed by this row, kept briefly so edits can be snapshotted
+    pub client: RefCell<Option<super::ClientObject>>,
+    /// pending debounced save request timer
+    pub scheduled: RefCell<Option<glib::SourceId>>,
+    /// last snapshot the service was told about; equal snapshots never re-save
+    pub(crate) last_emitted: RefCell<Option<RowSnapshot>>,
 }
 
 #[glib::object_subclass]
@@ -70,9 +80,14 @@ impl ObjectImpl for ClientRow {
 #[gtk::template_callbacks]
 impl ClientRow {
     #[template_callback]
+    fn handle_client_apply(&self, _button: &Button) {
+        log::debug!("apply button -> requesting peer save");
+        self.obj().save_now_with(None);
+    }
+    #[template_callback]
     fn handle_client_set_state(&self, state: bool, _switch: &Switch) -> bool {
         log::debug!("state change -> requesting update");
-        self.obj().emit_by_name::<()>("request-update", &[&state]);
+        self.obj().save_now_with(Some(state));
         true // dont run default handler
     }
 

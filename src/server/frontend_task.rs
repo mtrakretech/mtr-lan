@@ -106,9 +106,91 @@ async fn handle_frontend_event(
     event: FrontendEvent,
 ) -> bool {
     log::debug!("frontend: {event:?}");
+    let changed = matches!(
+        &event,
+        FrontendEvent::AddClient(..)
+            | FrontendEvent::DelClient(..)
+            | FrontendEvent::UpdateClient(..)
+            | FrontendEvent::ActivateClient(..)
+            | FrontendEvent::RenamePeer(..)
+    );
     let response = match event {
+        FrontendEvent::SetIdentity(name, role) => {
+            let name = name.trim();
+            if name.is_empty() || name.chars().count() > 80 || name.chars().any(char::is_control) {
+                Some(FrontendNotify::NotifyError(
+                    "Choose a display name of 1–80 characters".into(),
+                ))
+            } else if role == crate::config::Role::Host && !server.capture_available.get() {
+                Some(FrontendNotify::NotifyError(
+                    "Windows input capture could not start. Check service logs.".into(),
+                ))
+            } else {
+                match crate::config::save_identity(&server.config_path, name, role) {
+                    Ok(()) => {
+                        *server.device_name.borrow_mut() = name.into();
+                        server.role.set(role);
+                        let handles: Vec<_> = server
+                            .client_manager
+                            .borrow()
+                            .get_client_states()
+                            .map(|s| s.client.handle)
+                            .collect();
+                        for handle in handles {
+                            let _ = emulate_tx.send(EmulationEvent::ReleaseKeys(handle)).await;
+                        }
+                        let _ = capture_tx
+                            .send(CaptureEvent::SetEnabled(role == crate::config::Role::Host))
+                            .await;
+                        log::info!("Device role changed to {role:?}; display name updated");
+                        Some(FrontendNotify::Status(server.status()))
+                    }
+                    Err(e) => Some(FrontendNotify::NotifyError(format!(
+                        "Could not save this PC's settings: {e}"
+                    ))),
+                }
+            }
+        }
+        FrontendEvent::RenamePeer(handle, name) => {
+            let name = name.trim();
+            if name.chars().count() > 80 || name.chars().any(char::is_control) {
+                return false;
+            }
+            let updated = server.client_manager.borrow_mut().get_mut(handle).map(|s| {
+                s.client.display_name = if name.is_empty() {
+                    None
+                } else {
+                    Some(name.into())
+                };
+                s.client.clone()
+            });
+            updated.map(FrontendNotify::NotifyClientUpdate)
+        }
+        FrontendEvent::ReleaseInput() => {
+            let handles: Vec<_> = server
+                .client_manager
+                .borrow()
+                .get_client_states()
+                .map(|s| s.client.handle)
+                .collect();
+            for handle in handles {
+                let _ = emulate_tx.send(EmulationEvent::ReleaseKeys(handle)).await;
+            }
+            let _ = capture_tx.send(CaptureEvent::Release).await;
+            Some(FrontendNotify::Status(server.status()))
+        }
+        FrontendEvent::Status() => Some(FrontendNotify::Status(server.status())),
+        FrontendEvent::ShowWindow() => Some(FrontendNotify::ShowWindow()),
         FrontendEvent::AddClient(hostname, port, pos) => {
             let handle = add_client(server, resolve_tx, hostname, HashSet::new(), port, pos).await;
+            if let Some(state) = server.client_manager.borrow_mut().get_mut(handle) {
+                if let Some(device) = server.discovered.borrow().iter().find(|d| {
+                    state.client.hostname.as_deref() == Some(d.address.as_str())
+                        || state.client.hostname.as_deref() == Some(d.computer_name.as_str())
+                }) {
+                    state.client.display_name = Some(device.name.clone());
+                }
+            }
 
             let client = server
                 .client_manager
@@ -124,6 +206,14 @@ async fn handle_frontend_event(
             Some(FrontendNotify::NotifyClientActivate(handle, active))
         }
         FrontendEvent::ChangePort(port) => {
+            if port == 0 {
+                let _ = frontend
+                    .notify_all(FrontendNotify::NotifyError(
+                        "Port must be between 1 and 65535".into(),
+                    ))
+                    .await;
+                return false;
+            }
             let _ = port_tx.send(port).await;
             None
         }
@@ -145,6 +235,17 @@ async fn handle_frontend_event(
             return true;
         }
         FrontendEvent::UpdateClient(handle, hostname, port, pos) => {
+            if server.client_manager.borrow().get(handle).is_none() {
+                return false;
+            }
+            if port == 0 {
+                let _ = frontend
+                    .notify_all(FrontendNotify::NotifyError(
+                        "Peer port must be between 1 and 65535".into(),
+                    ))
+                    .await;
+                return false;
+            }
             update_client(
                 server,
                 capture_tx,
@@ -164,6 +265,15 @@ async fn handle_frontend_event(
             Some(FrontendNotify::NotifyClientUpdate(client))
         }
     };
+    if changed {
+        if let Err(e) = server.save_config() {
+            let _ = frontend
+                .notify_all(FrontendNotify::NotifyError(format!(
+                    "Could not save settings: {e}"
+                )))
+                .await;
+        }
+    }
     let Some(response) = response else {
         return false;
     };
@@ -226,6 +336,17 @@ pub async fn activate_client(
             )))
             .await;
     } else {
+        let address = server
+            .client_manager
+            .borrow()
+            .get(client)
+            .and_then(|s| s.active_addr);
+        let _ = capture_notify_tx
+            .send(CaptureEvent::ReleasePeer(client, address))
+            .await;
+        let _ = emulate_notify_tx
+            .send(EmulationEvent::ReleaseKeys(client))
+            .await;
         let _ = capture_notify_tx
             .send(CaptureEvent::ClientEvent(ClientEvent::Destroy(client)))
             .await;
@@ -242,16 +363,29 @@ pub async fn remove_client(
     frontend: &mut FrontendListener,
     client: ClientHandle,
 ) -> Option<ClientHandle> {
-    let Some((client, active)) = server
+    let Some((client, active, address, keys)) = server
         .client_manager
         .borrow_mut()
         .remove_client(client)
-        .map(|s| (s.client.handle, s.active))
+        .map(|s| {
+            (
+                s.client.handle,
+                s.active,
+                s.active_addr,
+                s.pressed_keys.into_iter().collect::<Vec<_>>(),
+            )
+        })
     else {
         return None;
     };
 
     if active {
+        let _ = capture_notify_tx
+            .send(CaptureEvent::ReleasePeer(client, address))
+            .await;
+        let _ = emulate_notify_tx
+            .send(EmulationEvent::ReleaseSnapshot(client, keys))
+            .await;
         let _ = capture_notify_tx
             .send(CaptureEvent::ClientEvent(ClientEvent::Destroy(client)))
             .await;
@@ -276,6 +410,16 @@ async fn update_client(
     client_update: (ClientHandle, Option<String>, u16, Position),
 ) {
     let (handle, hostname, port, pos) = client_update;
+    if server.active_client.get() == Some(handle) {
+        let address = server
+            .client_manager
+            .borrow()
+            .get(handle)
+            .and_then(|s| s.active_addr);
+        let _ = capture_notify_tx
+            .send(CaptureEvent::ReleasePeer(handle, address))
+            .await;
+    }
     let mut changed = false;
     let (hostname, handle, active) = {
         // retrieve state

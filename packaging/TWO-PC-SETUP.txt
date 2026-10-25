@@ -1,0 +1,31 @@
+MTR-LAN-COPY - YOUR TWO-PC SETUP (desktop v7)
+
+This PC: MTR-PC  192.168.1.17 -- HOST (your keyboard and mouse)
+Other PC: DESKTOP-R37SVF8  192.168.1.47 -- CLIENT
+
+SETUP STEPS
+1. Run desktop v7 (MTR-LAN-Copy) on BOTH PCs: extract the ZIP, then open
+   MTR-LAN-Copy.exe. Both PCs should use this release.
+2. MTR-PC: This PC > Host > Save name and role (confirm the warning).
+   DESKTOP-R37SVF8: This PC > Client. The display name saves when typing pauses.
+3. Add each other in Connections (Discover or the IP / PC name) and enable
+   the peer switch on BOTH PCs. Position: Right on MTR-PC, Left on the
+   other. Peer edits autosave after typing pauses.
+4. Allow the firewall prompt for Private networks on both PCs (inbound UDP
+   4242 and 4243). Nothing is changed automatically for you.
+5. When both show Responding, move the cursor to the RIGHT edge of MTR-PC
+   to control DESKTOP-R37SVF8.
+
+TWO-WAY EDGES
+- MTR-PC controls the laptop across ITS right edge.
+- On the laptop, return using its LEFT edge, the side facing MTR-PC. The edge
+  equals the side where the other PC sits relative to this PC on both machines.
+- Hold the pointer at the edge for about 0.6 seconds. Emergency release:
+  Ctrl + Alt + Shift + F12 on the PC whose input is being sent.
+
+LIMITS
+- Traffic is unencrypted and unauthenticated; use trusted private LANs only.
+- Host input capture is experimental; elevated/secure windows may reject
+  injected input. No clipboard/file transfer.
+- Desktop v7 remains wire-compatible with v3/v4/v5/v6 apps, but both sides
+  should run v7 for identical behavior. Physical two-PC input was not tested.

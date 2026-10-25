@@ -16,6 +16,33 @@ use crate::config::DEFAULT_PORT;
 #[template(resource = "/de/feschber/LanMouse/window.ui")]
 pub struct Window {
     #[template_child]
+    pub preferences_box: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub identity_label: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub local_pc_page: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub discovery_page: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub logs_page: TemplateChild<gtk::Box>,
+    pub network_ui: RefCell<Option<super::super::network::NetworkUi>>,
+    #[template_child]
+    pub main_stack: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub sidebar_status: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub status_badge: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub peers_metric: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub received_metric: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub sent_metric: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub status_row: TemplateChild<ActionRow>,
+    #[template_child]
+    pub traffic_row: TemplateChild<ActionRow>,
+    #[template_child]
     pub port_edit_apply: TemplateChild<Button>,
     #[template_child]
     pub port_edit_cancel: TemplateChild<Button>,
@@ -56,6 +83,10 @@ impl ObjectSubclass for Window {
 
 #[gtk::template_callbacks]
 impl Window {
+    #[template_callback]
+    fn handle_open_connections(&self) {
+        self.main_stack.set_visible_child_name("connections");
+    }
     #[template_callback]
     fn handle_add_client_pressed(&self, _button: &Button) {
         self.obj().request_client_create();

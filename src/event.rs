@@ -245,7 +245,7 @@ impl TryFrom<Vec<u8>> for Event {
     type Error = anyhow::Error;
 
     fn try_from(value: Vec<u8>) -> Result<Self> {
-        let event_id = u8::from_be_bytes(value[..1].try_into()?);
+        let event_id = *value.first().ok_or_else(|| anyhow!("Empty datagram"))?;
         match event_id {
             i if i == (EventType::Pointer as u8) => Ok(Event::Pointer(value.try_into()?)),
             i if i == (EventType::Keyboard as u8) => Ok(Event::Keyboard(value.try_into()?)),

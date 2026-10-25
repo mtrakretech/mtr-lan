@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
 use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 use std::{error::Error, fs};
 use toml;
 
@@ -15,6 +16,9 @@ pub const DEFAULT_PORT: u16 = 4242;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigToml {
+    pub role: Option<Role>,
+    pub device_name: Option<String>,
+    pub clients: Option<Vec<StoredClient>>,
     pub port: Option<u16>,
     pub frontend: Option<String>,
     pub release_bind: Option<Vec<scancode::Linux>>,
@@ -24,8 +28,163 @@ pub struct ConfigToml {
     pub bottom: Option<TomlClient>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn peer_save_preserves_options_and_allows_multiple_peers_on_one_side() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "port = 4242\nfrontend = 'gtk'\ncustom_option = 'keep'\n[right]\nhostname = 'legacy'\n",
+        )
+        .unwrap();
+        let clients = (0..2)
+            .map(|n| StoredClient {
+                display_name: None,
+                hostname: Some(format!("peer{n}")),
+                ips: vec!["127.0.0.1".parse().unwrap()],
+                port: 4242,
+                position: Position::Right,
+                activate_on_startup: n == 1,
+            })
+            .collect();
+        save_peer_state(&path, 4343, clients).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        let document: toml::Value = toml::from_str(&text).unwrap();
+        assert_eq!(document["custom_option"].as_str(), Some("keep"));
+        assert!(document.get("right").is_none());
+        let config: ConfigToml = toml::from_str(&text).unwrap();
+        assert_eq!(config.port, Some(4343));
+        assert_eq!(config.clients.unwrap().len(), 2);
+    }
+    #[test]
+    fn malformed_config_is_not_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "not valid [").unwrap();
+        assert!(save_peer_state(&path, 4242, vec![]).is_err());
+        assert_eq!(fs::read_to_string(path).unwrap(), "not valid [");
+    }
+    #[test]
+    fn empty_config_and_legacy_config_still_parse() {
+        let config: ConfigToml = toml::from_str("").unwrap();
+        assert!(config.clients.is_none());
+        let config: ConfigToml = toml::from_str("[left]\nhostname = 'peer'\n").unwrap();
+        assert_eq!(config.left.unwrap().hostname.as_deref(), Some("peer"));
+    }
+
+    #[test]
+    fn identity_is_preserved_when_peers_are_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        save_identity(&path, "Office host", Role::Host).unwrap();
+        save_peer_state(&path, 4343, vec![]).unwrap();
+        let config: ConfigToml = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(config.role, Some(Role::Host));
+        assert_eq!(config.device_name.as_deref(), Some("Office host"));
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StoredClient {
+    #[serde(default)]
+    pub display_name: Option<String>,
+    pub hostname: Option<String>,
+    pub ips: Vec<IpAddr>,
+    pub port: u16,
+    pub position: crate::client::Position,
+    pub activate_on_startup: bool,
+}
+
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Host,
+    #[default]
+    Client,
+}
+
+pub fn computer_name() -> String {
+    env::var("COMPUTERNAME")
+        .or_else(|_| env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "This PC".into())
+}
+
+pub fn save_identity(path: &Path, name: &str, role: Role) -> Result<()> {
+    let mut document: toml::Value = match fs::read_to_string(path) {
+        Ok(text) => toml::from_str(&text)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            toml::Value::Table(Default::default())
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let table = document
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("Config must be a table"))?;
+    table.insert("device_name".into(), name.into());
+    table.insert("role".into(), toml::Value::try_from(role)?);
+    atomic_write(path, toml::to_string_pretty(&document)?.as_bytes())
+}
+
+/// Portable distributions opt in with a marker beside the EXE. Explicit --config wins.
+pub fn default_config_path() -> Result<PathBuf> {
+    #[cfg(windows)]
+    if let Some(dir) = env::current_exe()?.parent() {
+        if dir.join("portable.flag").exists() {
+            return Ok(dir.join("config.toml"));
+        }
+    }
+    #[cfg(windows)]
+    let base = env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".config")))
+        .ok_or_else(|| anyhow::anyhow!("No Windows configuration folder available"))?;
+    #[cfg(unix)]
+    let base = env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
+        .ok_or_else(|| anyhow::anyhow!("No configuration folder available"))?;
+    Ok(base.join("lan-mouse").join("config.toml"))
+}
+
+pub fn save_peer_state(path: &Path, port: u16, clients: Vec<StoredClient>) -> Result<()> {
+    let mut document: toml::Value = match fs::read_to_string(path) {
+        Ok(text) => toml::from_str(&text)?, // Never silently overwrite malformed user settings.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            toml::Value::Table(Default::default())
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let table = document
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("Config must be a TOML table"))?;
+    table.insert("port".into(), toml::Value::Integer(port.into()));
+    table.insert("clients".into(), toml::Value::try_from(clients)?);
+    for position in ["left", "right", "top", "bottom"] {
+        table.remove(position);
+    }
+    atomic_write(path, toml::to_string_pretty(&document)?.as_bytes())
+}
+
+pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(contents)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path)?;
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct TomlClient {
+    pub display_name: Option<String>,
     pub hostname: Option<String>,
     pub host_name: Option<String>,
     pub ips: Option<Vec<IpAddr>>,
@@ -59,6 +218,10 @@ struct CliArgs {
     /// run only the service as a daemon without the frontend
     #[arg(short, long)]
     daemon: bool,
+
+    /// Start the Windows GUI hidden in the notification area
+    #[arg(long)]
+    minimized: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -69,6 +232,9 @@ pub enum Frontend {
 
 #[derive(Debug)]
 pub struct Config {
+    pub role: Role,
+    pub device_name: String,
+    pub config_path: PathBuf,
     pub frontend: Frontend,
     pub port: u16,
     pub clients: Vec<(TomlClient, Position)>,
@@ -77,6 +243,7 @@ pub struct Config {
 }
 
 pub struct ConfigClient {
+    pub display_name: Option<String>,
     pub ips: HashSet<IpAddr>,
     pub hostname: Option<String>,
     pub port: u16,
@@ -90,27 +257,16 @@ const DEFAULT_RELEASE_KEYS: [scancode::Linux; 4] =
 impl Config {
     pub fn new() -> Result<Self> {
         let args = CliArgs::parse();
-        let config_file = "config.toml";
-        #[cfg(unix)]
-        let config_path = {
-            let xdg_config_home =
-                env::var("XDG_CONFIG_HOME").unwrap_or(format!("{}/.config", env::var("HOME")?));
-            format!("{xdg_config_home}/lan-mouse/{config_file}")
-        };
+        let config_path = args
+            .config
+            .map(PathBuf::from)
+            .unwrap_or(default_config_path()?);
+        // The daemon receives an explicit path so GUI and service always edit the same file.
+        env::set_var("LAN_MOUSE_CONFIG", &config_path);
 
-        #[cfg(not(unix))]
-        let config_path = {
-            let app_data =
-                env::var("LOCALAPPDATA").unwrap_or(format!("{}/.config", env::var("USERPROFILE")?));
-            format!("{app_data}\\lan-mouse\\{config_file}")
-        };
-
-        // --config <file> overrules default location
-        let config_path = args.config.unwrap_or(config_path);
-
-        let config_toml = match ConfigToml::new(config_path.as_str()) {
+        let config_toml = match ConfigToml::new(&config_path.to_string_lossy()) {
             Err(e) => {
-                log::warn!("{config_path}: {e}");
+                log::warn!("{}: {e}", config_path.display());
                 log::warn!("Continuing without config file ...");
                 None
             }
@@ -144,6 +300,7 @@ impl Config {
                 None => DEFAULT_PORT,
             },
         };
+        anyhow::ensure!(port != 0, "Port must be between 1 and 65535");
 
         log::debug!("{config_toml:?}");
         let release_bind = config_toml
@@ -152,8 +309,30 @@ impl Config {
             .unwrap_or(Vec::from_iter(DEFAULT_RELEASE_KEYS.iter().cloned()));
 
         let mut clients: Vec<(TomlClient, Position)> = vec![];
+        let role = config_toml
+            .as_ref()
+            .and_then(|c| c.role)
+            .unwrap_or_default();
+        let device_name = config_toml
+            .as_ref()
+            .and_then(|c| c.device_name.clone())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(computer_name);
 
         if let Some(config_toml) = config_toml {
+            for c in config_toml.clients.unwrap_or_default() {
+                clients.push((
+                    TomlClient {
+                        display_name: c.display_name,
+                        hostname: c.hostname,
+                        host_name: None,
+                        ips: Some(c.ips),
+                        port: Some(c.port),
+                        activate_on_startup: Some(c.activate_on_startup),
+                    },
+                    c.position,
+                ));
+            }
             if let Some(c) = config_toml.right {
                 clients.push((c, Position::Right))
             }
@@ -171,6 +350,9 @@ impl Config {
         let daemon = args.daemon;
 
         Ok(Config {
+            role,
+            device_name,
+            config_path,
             daemon,
             frontend,
             clients,
@@ -195,6 +377,7 @@ impl Config {
                 };
                 let active = c.activate_on_startup.unwrap_or(false);
                 ConfigClient {
+                    display_name: c.display_name.clone(),
                     ips,
                     hostname,
                     port,

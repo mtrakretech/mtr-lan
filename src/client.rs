@@ -60,8 +60,22 @@ impl TryFrom<&str> for Position {
     }
 }
 
+impl Client {
+    /// Stable, human-readable label for logs: nickname, then hostname,
+    /// then the numeric handle. Never logs injected screen text.
+    pub fn label(&self) -> String {
+        self.display_name
+            .clone()
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| self.hostname.clone())
+            .unwrap_or_else(|| format!("handle {}", self.handle))
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Client {
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// hostname of this client
     pub hostname: Option<String>,
     /// fix ips, determined by the user
@@ -90,6 +104,9 @@ pub type ClientHandle = u32;
 
 #[derive(Debug, Clone)]
 pub struct ClientState {
+    pub last_seen: Option<std::time::Instant>,
+    pub last_ping: Option<std::time::Instant>,
+    pub latency_ms: Option<u64>,
     /// information about the client
     pub client: Client,
     /// events should be sent to and received from the client
@@ -136,6 +153,7 @@ impl ClientManager {
 
         // store the client
         let client = Client {
+            display_name: None,
             hostname,
             fix_ips,
             handle,
@@ -146,6 +164,9 @@ impl ClientManager {
 
         // client was never seen, nor pinged
         let client_state = ClientState {
+            last_seen: None,
+            last_ping: None,
+            latency_ms: None,
             client,
             active,
             active_addr: None,

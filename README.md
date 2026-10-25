@@ -1,5 +1,16 @@
-# Lan Mouse
-Lan Mouse is a mouse and keyboard sharing software similar to universal-control on Apple devices.
+# MTR-LAN-Copy
+> **MTR-LAN-Copy Windows desktop edition (v7):** this workspace includes a redesigned UI,
+> tray/startup integration, PC names and nicknames, LAN discovery, live diagnostics,
+> a per-peer return gesture and an **experimental, opt-in Windows host capture backend**.
+> The original upstream description below predates those local changes. See
+> `packaging/PORTABLE-README.txt` for current setup, security limitations and test
+> scope. Use the same desktop-v7 build on both PCs. (Desktop v3/v4/v5/v6 devices remain
+> wire-compatible for discovery and input.)
+>
+> Traffic remains unencrypted and unauthenticated. Use trusted private LANs only.
+> Physical two-device keyboard/mouse sharing has not been verified in local tests.
+
+MTR-LAN-Copy is a Windows desktop pack of Lan Mouse, a mouse and keyboard sharing software similar to universal-control on Apple devices.
 It allows for using multiple pcs with a single set of mouse and keyboard.
 This is also known as a Software KVM switch.
 
